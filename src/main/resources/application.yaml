@@ -1,0 +1,32 @@
+spring:
+#  profiles:
+#    active: dev
+  liquibase:
+    enabled: true
+  jpa:
+    hibernate:
+      ddl-auto: none
+    show-sql: true
+    generate-ddl: true
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+  datasource:
+    driver-class-name: org.postgresql.Driver
+    url: jdbc:postgresql://localhost:5433/articles_service
+    username: admin
+    password: admin
+
+server:
+  error:
+    include-message: always
+
+articles-api:
+  num-of-threads: 5
+  external-url: https://api.spaceflightnewsapi.net
+  articles-thread-limit: 10
+  articles-total-limit: 100
+  black-list:
+    - Earth
+    - Europe
+
