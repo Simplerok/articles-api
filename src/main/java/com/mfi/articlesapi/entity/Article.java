@@ -7,6 +7,7 @@ import lombok.NoArgsConstructor;
 
 import javax.persistence.*;
 import java.time.LocalDateTime;
+import java.time.ZonedDateTime;
 
 @Data
 @NoArgsConstructor
@@ -27,7 +28,7 @@ public class Article {
     private String newsSite;
 
     @Column(name = "published_date")
-    private LocalDateTime publishedDate;
+    private ZonedDateTime publishedDate;
 
     @Column(name = "article")
     private String content;

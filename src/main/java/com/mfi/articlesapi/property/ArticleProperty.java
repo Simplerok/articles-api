@@ -15,5 +15,6 @@ public class ArticleProperty {
     private int articlesThreadLimit;
     private int articlesTotalLimit;
     private Set<String> blackList;
+    private int numOfRecordsInNewsSite;
 
 }

@@ -1,17 +1,19 @@
 package com.mfi.articlesapi.service.impl;
 
 import com.mfi.articlesapi.dto.DownloadArticle;
+import com.mfi.articlesapi.entity.Article;
 import com.mfi.articlesapi.property.ArticleProperty;
+import com.mfi.articlesapi.repository.ArticlesRepository;
 import com.mfi.articlesapi.service.ArticleClient;
 import com.mfi.articlesapi.service.ArticleService;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
 
-import java.util.Comparator;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -24,14 +26,19 @@ public class ArticleServiceImpl implements ArticleService {
 
     private final ArticleClient articleClient;
     private final ArticleProperty articleProperty;
-    private ExecutorService executor;
+    private final ExecutorService executor;
     private AtomicInteger offsetCounter;
-    private ConcurrentHashMap<String, List<DownloadArticle>> articlesMap;
+    private final ConcurrentHashMap<String, List<DownloadArticle>> articlesMap;
+    private final ArticlesRepository articlesRepository;
+    private final RestTemplate restTemplate;
 
-    public ArticleServiceImpl(ArticleClient articleClient, ArticleProperty articleProperty){
+
+    public ArticleServiceImpl(ArticleClient articleClient, ArticleProperty articleProperty, ArticlesRepository articlesRepository, RestTemplate restTemplate){
 
         this.articleClient = articleClient;
         this.articleProperty = articleProperty;
+        this.articlesRepository = articlesRepository;
+        this.restTemplate = restTemplate;
         executor = Executors.newFixedThreadPool(articleProperty.getNumOfThreads());
         offsetCounter = new AtomicInteger(0);
         articlesMap = new ConcurrentHashMap<>();
@@ -57,7 +64,15 @@ public class ArticleServiceImpl implements ArticleService {
         if(lastOfArticles > 0) {
             executor.submit(() -> downloadArticles(lastOfArticles, offsetCounter.getAndAdd(lastOfArticles)));
         }
+        executor.shutdown();
     }
+
+    @Override
+    public Page<Article> getAllArticles(Pageable pageable) {
+
+        return articlesRepository.findAll(pageable);
+    }
+
 
     private void downloadArticles(int limit, int offset){
 
@@ -70,11 +85,30 @@ public class ArticleServiceImpl implements ArticleService {
                 .sorted(Comparator.comparing(DownloadArticle::getPublishedAt))
                 .collect(Collectors.groupingBy(DownloadArticle::getNewsSite))
                 .forEach((key, value) -> articlesMap.merge(key, value, (oldValue, newValue) ->
-                {
-                    oldValue.addAll(newValue);
-                    return oldValue;
-                }));
+        {
+            oldValue.addAll(newValue);
+            return oldValue;
+        }));
 
+        HashMap<String, List<DownloadArticle>> copyMap = new HashMap<>(articlesMap);
 
+        for(Map.Entry<String, List<DownloadArticle>> entrySet : copyMap.entrySet()){
+
+            if (entrySet.getValue().size() >= articleProperty.getNumOfRecordsInNewsSite()) {
+                for (DownloadArticle downloadArticle : entrySet.getValue()) {
+
+                    String contentOfArticle = restTemplate.getForObject(downloadArticle.getUrl(), String.class);
+
+                    Article article = Article.builder()
+                            .title(downloadArticle.getTitle())
+                            .newsSite(downloadArticle.getNewsSite())
+                            .publishedDate(downloadArticle.getPublishedAt())
+                            .content(contentOfArticle)
+                            .build();
+                    articlesRepository.save(article);
+                }
+                articlesMap.remove(entrySet.getKey());
+            }
+        }
     }
 }

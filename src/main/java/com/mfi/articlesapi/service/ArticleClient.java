@@ -13,8 +13,4 @@ public interface ArticleClient {
     @RequestLine("GET /v3/articles?_limit={limit}&_start={start}")
     List<DownloadArticle> getArticles(@Param int limit, @Param int start);
 
-    @RequestLine("GET {articleUrl}")
-    String downloadArticle(@Param int limit, @Param int start);
-
-
 }
