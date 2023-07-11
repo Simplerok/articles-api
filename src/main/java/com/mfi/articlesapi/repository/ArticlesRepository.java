@@ -7,4 +7,5 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface ArticlesRepository extends JpaRepository<Article, Integer> {
 
+    boolean existsByTitleAndNewsSite(String title, String newsSite);
 }

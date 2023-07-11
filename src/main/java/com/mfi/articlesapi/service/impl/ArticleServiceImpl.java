@@ -11,6 +11,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.*;
@@ -45,14 +46,15 @@ public class ArticleServiceImpl implements ArticleService {
 
     }
 
-    @Scheduled(cron = "0 0 * * * *")
+//    @Scheduled(cron = "0 0 * * * *")
+    @Scheduled(fixedRate = 36000)
     @Override
     public void addArticle() {
 
         int numOfTasks = articleProperty.getArticlesTotalLimit()/articleProperty.getArticlesThreadLimit();
         int lastOfArticles = articleProperty.getArticlesTotalLimit()%articleProperty.getArticlesThreadLimit();
 
-        if (numOfTasks < 0) {
+        if (numOfTasks < 1 && lastOfArticles < 1) {
             log.warn("The number of articles can't be zero");
             return;
         }
@@ -64,7 +66,6 @@ public class ArticleServiceImpl implements ArticleService {
         if(lastOfArticles > 0) {
             executor.submit(() -> downloadArticles(lastOfArticles, offsetCounter.getAndAdd(lastOfArticles)));
         }
-        executor.shutdown();
     }
 
     @Override
@@ -76,8 +77,9 @@ public class ArticleServiceImpl implements ArticleService {
 
     private void downloadArticles(int limit, int offset){
 
+        log.info("Asked client : limit={}, offset={}", limit, offset);
         List<DownloadArticle> articles = articleClient.getArticles(limit, offset);
-
+        log.info("Articles client return= {} articles", articles.size());
         articles.stream()
                 .filter(article ->
                         articleProperty.getBlackList().stream()
@@ -90,11 +92,18 @@ public class ArticleServiceImpl implements ArticleService {
             return oldValue;
         }));
 
+        checkPoolSizeAndAddArtToData();
+        log.info("Finish him");
+    }
+
+    @Transactional
+    protected void checkPoolSizeAndAddArtToData() {
         HashMap<String, List<DownloadArticle>> copyMap = new HashMap<>(articlesMap);
 
         for(Map.Entry<String, List<DownloadArticle>> entrySet : copyMap.entrySet()){
 
             if (entrySet.getValue().size() >= articleProperty.getNumOfRecordsInNewsSite()) {
+                log.info("Buffer for news site={} is overflow", entrySet.getKey());
                 for (DownloadArticle downloadArticle : entrySet.getValue()) {
 
                     String contentOfArticle = restTemplate.getForObject(downloadArticle.getUrl(), String.class);
@@ -105,10 +114,17 @@ public class ArticleServiceImpl implements ArticleService {
                             .publishedDate(downloadArticle.getPublishedAt())
                             .content(contentOfArticle)
                             .build();
-                    articlesRepository.save(article);
+                    if (!articlesRepository.existsByTitleAndNewsSite(article.getTitle(), article.getNewsSite())) {
+                        articlesRepository.save(article);
+                        log.info("The article with title={} from news site={} is successfully saved", article.getTitle(), article.getNewsSite());
+                    } else {
+                        log.warn("The article with title={} from news site={} is already exists", article.getTitle(), article.getNewsSite());
+                    }
+
                 }
                 articlesMap.remove(entrySet.getKey());
             }
         }
     }
+
 }

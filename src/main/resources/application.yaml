@@ -20,6 +20,9 @@ spring:
 server:
   error:
     include-message: always
+logging:
+  level:
+    root: INFO
 
 articles-api:
   num-of-threads: 5
