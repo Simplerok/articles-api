@@ -8,7 +8,6 @@ import com.mfi.articlesapi.repository.ArticlesRepository;
 import com.mfi.articlesapi.service.ArticleClient;
 import com.mfi.articlesapi.service.ArticleService;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.crossstore.ChangeSetPersister;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.scheduling.annotation.Scheduled;
