@@ -8,4 +8,6 @@ public interface ArticleService {
 
     void addArticle();
     Page<Article> getAllArticles(Pageable pageable);
+    Article getById(Long id);
+    Page<Article> getAllArticlesFilteredByNewsSite(String newsSite, Pageable pageable);
 }

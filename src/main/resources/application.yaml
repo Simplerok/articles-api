@@ -20,18 +20,26 @@ spring:
 server:
   error:
     include-message: always
+
+# Уровень логгирования
 logging:
   level:
     root: INFO
 
 articles-api:
+#  Количество создаваемых потоков
   num-of-threads: 5
+# Ссылка для загрузки информации о новостных статьях
   external-url: https://api.spaceflightnewsapi.net
+# Количество записей скачиваемых одним потоком
   articles-thread-limit: 10
+# Общее количество скачиваемых записей
   articles-total-limit: 100
+# Черный список статей
   black-list:
     - Earth
     - Europe
+# Лимит статей в буфере относящихся к одному новостному сайту
   num-of-records-in-news-site:
     15
 

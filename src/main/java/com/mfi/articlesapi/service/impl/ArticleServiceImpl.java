@@ -2,15 +2,18 @@ package com.mfi.articlesapi.service.impl;
 
 import com.mfi.articlesapi.dto.DownloadArticle;
 import com.mfi.articlesapi.entity.Article;
+import com.mfi.articlesapi.exception.NotFoundException;
 import com.mfi.articlesapi.property.ArticleProperty;
 import com.mfi.articlesapi.repository.ArticlesRepository;
 import com.mfi.articlesapi.service.ArticleClient;
 import com.mfi.articlesapi.service.ArticleService;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.crossstore.ChangeSetPersister;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
 
@@ -46,8 +49,34 @@ public class ArticleServiceImpl implements ArticleService {
 
     }
 
-//    @Scheduled(cron = "0 0 * * * *")
-    @Scheduled(fixedRate = 36000)
+    @Override
+    public Page<Article> getAllArticles(Pageable pageable) {
+        if(articlesRepository.findAll(pageable).isEmpty()){
+            throw new NotFoundException("There's not any articles yet");
+        }
+        return articlesRepository.findAll(pageable);
+    }
+
+    @Override
+    public Article getById(Long id) {
+        return articlesRepository.findById(id).orElseThrow(()->
+                new NotFoundException("Article not found with id="+id));
+    }
+
+    @Override
+    public Page<Article> getAllArticlesFilteredByNewsSite(String newsSite, Pageable pageable) {
+        if(articlesRepository.getAllByNewsSite(newsSite, pageable).isEmpty()){
+            throw new NotFoundException("There's not any articles yet");
+        }
+        return articlesRepository.getAllByNewsSite(newsSite, pageable);
+    }
+
+    /*
+    Данный метод запускает требуемое количество потоков для загрузки информации о новостных статьях
+    Потоки запускаются с периодичностью в 1 час
+    */
+    //    @Scheduled(cron = "0 0 * * * *")
+    @Scheduled(fixedRate = 3600000)
     @Override
     public void addArticle() {
 
@@ -68,13 +97,10 @@ public class ArticleServiceImpl implements ArticleService {
         }
     }
 
-    @Override
-    public Page<Article> getAllArticles(Pageable pageable) {
-
-        return articlesRepository.findAll(pageable);
-    }
-
-
+    /*
+    Данный метод формирует клиентский запрос для загрузки информации о новостных статьях, фильтрует согласно черного списка
+    и группирует полученную информацию, сохраняет информацию в буфер
+    */
     private void downloadArticles(int limit, int offset){
 
         log.info("Asked client : limit={}, offset={}", limit, offset);
@@ -92,12 +118,17 @@ public class ArticleServiceImpl implements ArticleService {
             return oldValue;
         }));
 
-        checkPoolSizeAndAddArtToData();
-        log.info("Finish him");
+        checkPoolSizeAndAddArtToDataBase();
+        log.info("Finish download articles");
     }
 
-    @Transactional
-    protected void checkPoolSizeAndAddArtToData() {
+
+    /*
+    Данный метод проверяет достижение лимита количества статей, сгруппированных по новостному сайту.
+    При достижении лимита формируется клиентский запрос по ссылке статьи, скачивается ее содержание,
+    статья добавляется в базу и удаляется из буфера
+    */
+    private void checkPoolSizeAndAddArtToDataBase() {
         HashMap<String, List<DownloadArticle>> copyMap = new HashMap<>(articlesMap);
 
         for(Map.Entry<String, List<DownloadArticle>> entrySet : copyMap.entrySet()){
@@ -114,16 +145,21 @@ public class ArticleServiceImpl implements ArticleService {
                             .publishedDate(downloadArticle.getPublishedAt())
                             .content(contentOfArticle)
                             .build();
-                    if (!articlesRepository.existsByTitleAndNewsSite(article.getTitle(), article.getNewsSite())) {
-                        articlesRepository.save(article);
-                        log.info("The article with title={} from news site={} is successfully saved", article.getTitle(), article.getNewsSite());
-                    } else {
-                        log.warn("The article with title={} from news site={} is already exists", article.getTitle(), article.getNewsSite());
-                    }
+                    saveArticleToDB(article);
 
                 }
                 articlesMap.remove(entrySet.getKey());
             }
+        }
+    }
+
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    protected void saveArticleToDB(Article article) {
+        if (!articlesRepository.existsByTitleAndNewsSite(article.getTitle(), article.getNewsSite())) {
+            articlesRepository.save(article);
+            log.info("The article with title={} from news site={} is successfully saved", article.getTitle(), article.getNewsSite());
+        } else {
+            log.warn("The article with title={} from news site={} is already exists", article.getTitle(), article.getNewsSite());
         }
     }
 
